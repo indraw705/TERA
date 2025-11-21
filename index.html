@@ -1,171 +1,28 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>TeraBox Auto-Downloader</title>
-  <style>
-    /* Simple, readable styling */
-    :root{font-family:Inter,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial;margin:0}
-    body{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0f172a;color:#e6eef8;padding:24px}
-    .card{width:100%;max-width:760px;background:linear-gradient(180deg,#0b1220 0,#071027 100%);border-radius:12px;padding:20px 22px;box-shadow:0 6px 30px rgba(2,6,23,.6);}
-    h1{margin:0 0 8px;font-size:20px}
-    p.lead{margin:0 0 18px;color:#9fb0d8}
-    label{display:block;margin-bottom:6px;color:#9fb0d8}
-    input[type=text]{width:100%;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit;font-size:14px}
-    .row{display:flex;gap:8px;margin-top:12px}
-    button{appearance:none;border:0;background:#2563eb;color:white;padding:10px 14px;border-radius:8px;font-weight:600;cursor:pointer}
-    button.secondary{background:transparent;border:1px solid rgba(255,255,255,0.06);color:#cfe2ff}
-    .log{margin-top:12px;background:rgba(255,255,255,0.02);padding:10px;border-radius:8px;font-family:monospace;font-size:13px;color:#dbeafe;min-height:56px}
-    .small{font-size:13px;color:#9fb0d8;margin-top:8px}
-    a.link{color:#7dd3fc}
-    footer{margin-top:12px;color:#6b7e9e;font-size:13px}
-  </style>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TeraBox Video Downloader</title>
+    <link rel="stylesheet" href="styles.css" />
 </head>
+
 <body>
-  <div class="card">
-    <h1>TeraBox — Auto Download</h1>
-    <p class="lead">Paste a TeraBox share link below. The script will attempt to resolve the real video file and start the download automatically.</p>
 
-    <label for="url">Enter TeraBox Share URL</label>
-    <input id="url" type="text" placeholder="https://teraboxshare.com/s/…" value="" />
+    <div class="container">
+        <h1>TeraBox Video Downloader</h1>
+        <p>Download your favorite videos from TeraBox</p>
 
-    <div class="row">
-      <button id="go">Download Video (auto)</button>
-      <button id="open" class="secondary">Open share page</button>
-      <button id="clear" class="secondary">Clear</button>
+        <label>Enter TeraBox Video URL:</label>
+        <input type="text" id="videoUrl" placeholder="Paste video URL here" />
+
+        <button id="downloadBtn">Download Video</button>
+
+        <p id="status"></p>
     </div>
 
-    <div class="log" id="log">Ready. Paste a TeraBox share link and click Download.</div>
-    <div class="small">Note: This client-side downloader uses a public CORS proxy (allorigins). If you get CORS or network errors, follow the instructions in the footer to use your own proxy or run a Python script.</div>
-    <footer>
-      If automatic download fails due to CORS, either host this page on a server that adds CORS headers, or run the included Python downloader (I can generate it for you). 
-    </footer>
-  </div>
+    <!-- JS moved to bottom so buttons work -->
+    <script src="script.js"></script>
 
-  <script>
-  (function(){
-    const input = document.getElementById('url');
-    const go = document.getElementById('go');
-    const openBtn = document.getElementById('open');
-    const clearBtn = document.getElementById('clear');
-    const log = document.getElementById('log');
-
-    function append(msg){
-      log.textContent = msg;
-      console.log(msg);
-    }
-
-    function extractShareId(url){
-      try{
-        const u = new URL(url);
-        // teraboxshare.com/s/ID or terabox.com/share/ID etc
-        const parts = u.pathname.split('/').filter(Boolean);
-        // look for segment that looks like share id (length >=8)
-        for(const p of parts.reverse()){
-          if(p.length>=6) return p;
-        }
-        return null;
-      }catch(e){return null}
-    }
-
-    // Try to find direct video/mp4 or HLS (.m3u8) or api endpoints inside HTML
-    function findVideoUrlFromHtml(html){
-      // Common patterns we try to match
-      const patterns = [
-        /https:\\/\\/api\\.1024tera\\.com\\/[^"'\s<>]*/g,
-        /https:\\/\\/down\\.[^"'\s<>]*/g,
-        /https:\\/\\/cdn\\.[^"'\s<>]*/g,
-        /https?:\\/\\/[^\s"']+\\.m3u8/g,
-        /https?:\\/\\/[^\s"']+\\.mp4/g
-      ];
-
-      for(const re of patterns){
-        const m = html.match(re);
-        if(m && m.length){
-          // prefer mp4
-          for(const cand of m){
-            if(/\.mp4($|\?|#)/.test(cand)) return cand.replace(/\\\\/g,'');
-          }
-          // else return first
-          return m[0].replace(/\\\\/g,'');
-        }
-      }
-      return null;
-    }
-
-    async function resolveAndDownload(rawUrl){
-      append('Resolving: ' + rawUrl);
-      const shareId = extractShareId(rawUrl);
-      if(!shareId){ append('Could not parse share ID from URL. Make sure it is a teraboxshare link.'); return; }
-
-      append('Using CORS proxy to fetch share page (may be slow)...');
-      const proxy = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(rawUrl);
-      let html;
-      try{
-        const r = await fetch(proxy, {cache:'no-store'});
-        if(!r.ok) throw new Error('Network response not ok: '+r.status);
-        html = await r.text();
-      }catch(err){
-        append('Failed to fetch share page via public proxy: ' + err.message + '\n\nPossible causes: CORS restrictions, proxy rate-limit, or network problems.\n\nOptions: (1) Run the Python downloader I can create for you, (2) Host this file on a server with CORS enabled, or (3) use your own CORS proxy.');
-        return;
-      }
-
-      append('Searching page for a direct video or API link...');
-      const resolved = findVideoUrlFromHtml(html);
-      if(resolved){
-        append('Found candidate: ' + resolved + '\nStarting automatic download...');
-        // create link and click
-        const a = document.createElement('a');
-        a.href = resolved;
-        // attempt filename
-        let filename = (shareId + '.mp4');
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        append('Download initiated. If the file is an M3U8 stream it may not download as a single .mp4.');
-        return;
-      }
-
-      // If no direct file, try the JSON endpoints commonly embedded
-      append('No direct mp4/m3u8 found on page. Trying to locate JSON config in the page...');
-      // try to find JSON structures with "download" or "file"
-      const jsonMatch = html.match(/(\{\s*"download"[\s\S]{0,4000}?\})/);
-      if(jsonMatch){
-        try{
-          const small = jsonMatch[1];
-          const obj = JSON.parse(small);
-          // look for url fields
-          const candidate = obj.url || obj.download || (obj.files && obj.files[0] && obj.files[0].url);
-          if(candidate){
-            append('Found URL in embedded JSON: ' + candidate + '\nStarting download...');
-            const a = document.createElement('a'); a.href = candidate; a.download = shareId + '.mp4'; document.body.appendChild(a); a.click(); a.remove(); return;
-          }
-        }catch(e){ /* ignore parse errors */ }
-      }
-
-      append('Could not automatically resolve a downloadable file from the share page.\nNext steps:\n1) I can provide a small Python script that downloads the file server-side (recommended and reliable).\n2) Or you can provide the raw HTML and I will try to look for the link manually.');
-    }
-
-    go.addEventListener('click', ()=>{
-      const v = input.value.trim();
-      if(!v){ append('Paste a TeraBox share link first.'); return; }
-      resolveAndDownload(v);
-    });
-
-    openBtn.addEventListener('click', ()=>{
-      const v = input.value.trim();
-      if(!v) return append('Paste the share link first.');
-      window.open(v, '_blank');
-    });
-
-    clearBtn.addEventListener('click', ()=>{ input.value=''; append('Cleared'); });
-
-    // allow enter key
-    input.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ go.click(); } });
-
-  })();
-  </script>
 </body>
 </html>
